@@ -1,0 +1,17 @@
+[project]
+name = "livekit-plugins"
+version = "0.1.0"
+description = "Documentation and examples for Telnyx LiveKit plugins (STT, TTS, LLM)"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "livekit-agents>=1.4.4",
+    "livekit-api>=0.6.0",
+    "livekit-plugins-telnyx>=0.1.0",
+    "livekit-plugins-openai>=0.8.0",
+    "python-dotenv>=1.0.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
