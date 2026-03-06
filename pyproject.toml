@@ -1,17 +1,19 @@
 [project]
-name = "livekit-plugins"
+name = "telnyx-livekit-plugins-workspace"
 version = "0.1.0"
 description = "Documentation and examples for Telnyx LiveKit plugins (STT, TTS, LLM)"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10,<3.15"
 dependencies = [
     "livekit-agents>=1.4.4",
     "livekit-api>=0.6.0",
-    "livekit-plugins-telnyx>=0.1.0",
+    "livekit-plugins-telnyx",
     "livekit-plugins-openai>=0.8.0",
     "python-dotenv>=1.0.0",
 ]
 
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
+[tool.uv.sources]
+livekit-plugins-telnyx = { path = "livekit-plugins-telnyx" }
+
+[tool.uv]
+package = false
