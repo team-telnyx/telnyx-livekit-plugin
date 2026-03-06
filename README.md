@@ -5,7 +5,7 @@ Support for [Telnyx](https://telnyx.com/)'s voice AI services in LiveKit Agents,
 ## Installation
 
 ```bash
-pip install livekit-plugins-telnyx
+pip install telnyx-livekit-plugin
 ```
 
 ## Pre-requisites

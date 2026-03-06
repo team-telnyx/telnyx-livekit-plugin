@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "telnyx-livekit-plugin"
 version = "0.2.0"
-description = "Telnyx STT/TTS plugins for LiveKit Agents — with full Deepgram parameter support"
+description = "Telnyx plugin for LiveKit Agents — STT, TTS, and LLM with full Deepgram parameter support"
 requires-python = ">=3.10,<3.15"
 dependencies = [
     "livekit-agents>=0.8.0",
@@ -14,7 +14,7 @@ dependencies = [
 ]
 
 [project.urls]
-Repository = "https://github.com/team-telnyx/livekit-plugins"
+Repository = "https://github.com/team-telnyx/telnyx-livekit-plugin"
 
 [tool.hatch.build.targets.wheel]
 packages = ["livekit"]

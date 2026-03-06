@@ -990,23 +990,6 @@ wheels = [
 ]
 
 [[package]]
-name = "livekit-plugins-telnyx"
-version = "0.2.0"
-source = { directory = "livekit-plugins-telnyx" }
-dependencies = [
-    { name = "aiohttp" },
-    { name = "livekit-agents" },
-    { name = "livekit-api" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "aiohttp", specifier = ">=3.10.0" },
-    { name = "livekit-agents", specifier = ">=0.8.0" },
-    { name = "livekit-api", specifier = ">=0.6.0" },
-]
-
-[[package]]
 name = "livekit-protocol"
 version = "1.1.2"
 source = { registry = "https://pypi.org/simple" }
@@ -1968,15 +1951,32 @@ wheels = [
 ]
 
 [[package]]
-name = "telnyx-livekit-plugins-workspace"
+name = "telnyx-livekit-plugin"
+version = "0.2.0"
+source = { directory = "telnyx-livekit-plugin" }
+dependencies = [
+    { name = "aiohttp" },
+    { name = "livekit-agents" },
+    { name = "livekit-api" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "aiohttp", specifier = ">=3.10.0" },
+    { name = "livekit-agents", specifier = ">=0.8.0" },
+    { name = "livekit-api", specifier = ">=0.6.0" },
+]
+
+[[package]]
+name = "telnyx-livekit-plugin-workspace"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
     { name = "livekit-agents" },
     { name = "livekit-api" },
     { name = "livekit-plugins-openai" },
-    { name = "livekit-plugins-telnyx" },
     { name = "python-dotenv" },
+    { name = "telnyx-livekit-plugin" },
 ]
 
 [package.metadata]
@@ -1984,8 +1984,8 @@ requires-dist = [
     { name = "livekit-agents", specifier = ">=1.4.4" },
     { name = "livekit-api", specifier = ">=0.6.0" },
     { name = "livekit-plugins-openai", specifier = ">=0.8.0" },
-    { name = "livekit-plugins-telnyx", directory = "livekit-plugins-telnyx" },
     { name = "python-dotenv", specifier = ">=1.0.0" },
+    { name = "telnyx-livekit-plugin", directory = "telnyx-livekit-plugin" },
 ]
 
 [[package]]
