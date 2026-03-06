@@ -20,6 +20,7 @@ from __future__ import annotations
 import asyncio
 import json
 import struct
+import warnings
 import weakref
 from dataclasses import dataclass, field
 from typing import Any, Literal
@@ -237,6 +238,101 @@ class STT(stt.STT):
             await stream.aclose()
         self._streams.clear()
         await self._session_manager.close()
+
+
+class DeepgramSTT(STT):
+    """Deepgram-specific STT with typed parameters and compatibility notices.
+
+    Use this constructor when targeting Deepgram specifically. It provides
+    typed parameters for all Deepgram features and warns about parameters
+    that are hardcoded or not yet supported on the Telnyx backend.
+
+    Usage:
+        stt = DeepgramSTT(
+            model="nova-3",
+            keyterm=["YourBrand", "custom-term"],
+            endpointing=300,
+        )
+    """
+
+    def __init__(
+        self,
+        *,
+        model: Literal["nova-3", "nova-2", "nova-3-flux"] = "nova-3",
+        language: str = "en",
+        interim_results: bool = True,
+        api_key: str | None = None,
+        base_url: str = STT_ENDPOINT,
+        sample_rate: int = SAMPLE_RATE,
+        http_session: aiohttp.ClientSession | None = None,
+        # Formatting
+        smart_format: bool | None = None,
+        numerals: bool | None = None,
+        punctuate: bool | None = None,
+        # Recognition boosting
+        keyterm: str | list[str] | None = None,
+        keywords: str | list[str] | None = None,
+        # Behavior
+        no_delay: bool | None = None,
+        filler_words: bool | None = None,
+        profanity_filter: bool | None = None,
+        endpointing: int | bool | None = None,
+        diarize: bool | None = None,
+        vad_events: bool | None = None,
+        # Catch-all
+        **extra_deepgram_params: Any,
+    ) -> None:
+        # Warn about hardcoded / unsupported params
+        if smart_format is not None:
+            warnings.warn(
+                "smart_format is always enabled on Telnyx STT. "
+                "This parameter has no effect.",
+                stacklevel=2,
+            )
+
+        if numerals is not None:
+            warnings.warn(
+                "numerals is always enabled on Telnyx STT. "
+                "This parameter has no effect.",
+                stacklevel=2,
+            )
+
+        if keyterm is not None:
+            warnings.warn(
+                "keyterm is not yet supported on Telnyx STT. "
+                "This parameter will be ignored.",
+                stacklevel=2,
+            )
+
+        if keywords is not None:
+            warnings.warn(
+                "keywords is not yet supported on Telnyx STT. "
+                "This parameter will be ignored.",
+                stacklevel=2,
+            )
+
+        super().__init__(
+            language=language,
+            transcription_engine="deepgram",
+            interim_results=interim_results,
+            api_key=api_key,
+            base_url=base_url,
+            sample_rate=sample_rate,
+            http_session=http_session,
+            model=model,
+            smart_format=smart_format,
+            numerals=numerals,
+            punctuate=punctuate,
+            keyterm=keyterm,
+            keywords=keywords,
+            no_delay=no_delay,
+            filler_words=filler_words,
+            profanity_filter=profanity_filter,
+            endpointing=endpointing,
+            diarize=diarize,
+            vad_events=vad_events,
+            **extra_deepgram_params,
+        )
 
 
 def _create_streaming_wav_header(sample_rate: int, num_channels: int) -> bytes:
