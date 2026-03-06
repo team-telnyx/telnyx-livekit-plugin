@@ -21,19 +21,8 @@ Get your API key from the [Telnyx Portal](https://portal.telnyx.com/#/app/api-ke
 ```python
 from livekit.plugins import telnyx
 
-stt = telnyx.STT(
-    transcription_engine="deepgram",
+stt = telnyx.deepgram.STT(
     model="nova-3",
-)
-```
-
-Deepgram parameters can be passed directly:
-
-```python
-stt = telnyx.STT(
-    transcription_engine="deepgram",
-    model="nova-3",
-    smart_format=True,
     keyterm=["YourBrand", "custom-term"],
     endpointing=300,
 )

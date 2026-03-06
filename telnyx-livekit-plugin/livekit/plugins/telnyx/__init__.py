@@ -1,8 +1,9 @@
-from .stt import STT, DeepgramSTT
+from . import deepgram
+from .stt import STT
 from .tts import TTS
 from .version import __version__
 
-__all__ = ["STT", "DeepgramSTT", "TTS", "__version__"]
+__all__ = ["deepgram", "STT", "TTS", "__version__"]
 
 
 from livekit.agents import Plugin
