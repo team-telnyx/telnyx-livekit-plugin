@@ -32,6 +32,7 @@ class _TTSOptions:
     api_key: str
     voice: str
     base_url: str
+    sample_rate: int
 
 
 class TTS(tts.TTS):
@@ -41,11 +42,12 @@ class TTS(tts.TTS):
         voice: str = "Telnyx.NaturalHD.astra",
         api_key: str | None = None,
         base_url: str = TTS_ENDPOINT,
+        sample_rate: int = SAMPLE_RATE,
         http_session: aiohttp.ClientSession | None = None,
     ) -> None:
         super().__init__(
             capabilities=tts.TTSCapabilities(streaming=True),
-            sample_rate=SAMPLE_RATE,
+            sample_rate=sample_rate,
             num_channels=NUM_CHANNELS,
         )
 
@@ -53,6 +55,7 @@ class TTS(tts.TTS):
             voice=voice,
             api_key=get_api_key(api_key),
             base_url=base_url,
+            sample_rate=sample_rate,
         )
         self._session_manager = SessionManager(http_session)
         self._streams = weakref.WeakSet[SynthesizeStream]()
@@ -99,7 +102,7 @@ class SynthesizeStream(tts.SynthesizeStream):
         request_id = utils.shortuuid()
         output_emitter.initialize(
             request_id=request_id,
-            sample_rate=SAMPLE_RATE,
+            sample_rate=self._tts._opts.sample_rate,
             num_channels=NUM_CHANNELS,
             mime_type="audio/pcm",
             stream=True,
@@ -149,7 +152,7 @@ class SynthesizeStream(tts.SynthesizeStream):
         headers = {"Authorization": f"Bearer {self._tts._opts.api_key}"}
 
         decoder = utils.codecs.AudioStreamDecoder(
-            sample_rate=SAMPLE_RATE,
+            sample_rate=self._tts._opts.sample_rate,
             num_channels=NUM_CHANNELS,
             format="audio/mp3",
         )
