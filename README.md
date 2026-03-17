@@ -1,18 +1,18 @@
-# Telnyx plugin for LiveKit Agents
+# <img src="https://developers.telnyx.com/favicon.ico" width="24" height="24" alt="Telnyx"> Telnyx plugin for LiveKit
 
-Support for [Telnyx](https://telnyx.com/)'s voice AI services in LiveKit Agents, including STT (powered by Deepgram), TTS, and LLM inference.
+Get ultra-low latency STT and TTS for your LiveKit Cloud agents. This plugin connects Telnyx's voice AI directly to your LiveKit agents with the fastest response times.
 
 ## Installation
 
 ```bash
-pip install telnyx-livekit-plugin
+pip install "telnyx-livekit-plugin @ git+https://github.com/team-telnyx/telnyx-livekit-plugin.git#subdirectory=telnyx-livekit-plugin"
 ```
 
 ## Pre-requisites
 
-You'll need an API key from Telnyx. It can be set as an environment variable: `TELNYX_API_KEY`
+You'll need a Telnyx API key. Set it as an environment variable: `TELNYX_API_KEY`
 
-Get your API key from the [Telnyx Portal](https://portal.telnyx.com/#/app/api-keys).
+In the [Telnyx Portal](https://portal.telnyx.com), search for "API keys" once logged in and create one.
 
 ## Usage
 
@@ -22,9 +22,16 @@ Get your API key from the [Telnyx Portal](https://portal.telnyx.com/#/app/api-ke
 from livekit.plugins import telnyx
 
 stt = telnyx.deepgram.STT(
-    model="nova-3",
-    keyterm=["YourBrand", "custom-term"],
+    model="nova-2",
+    language="en",
+    interim_results=True,
+    # Behavior
+    no_delay=True,
+    filler_words=False,
+    profanity_filter=False,
     endpointing=300,
+    diarize=False,
+    vad_events=False,
 )
 ```
 
@@ -33,22 +40,56 @@ stt = telnyx.deepgram.STT(
 ```python
 from livekit.plugins import telnyx
 
-tts = telnyx.TTS(voice="Telnyx.NaturalHD.astra")
+tts = telnyx.TTS(
+    voice="Rime.ArcanaV3.astra",
+    api_key=None,              # optional - defaults to TELNYX_API_KEY env var
+    base_url="wss://api.telnyx.com/v2/text-to-speech",  # optional
+    sample_rate=24000,         # optional
+)
 ```
 
 ### LLM
 
-Telnyx LLM inference is available via the OpenAI plugin:
-
 ```python
 from livekit.plugins import openai
 
-llm = openai.LLM.with_telnyx(model="Qwen/Qwen3-235B-A22B")
+llm = openai.LLM.with_telnyx(model="kimi")
+```
+
+## Full Example
+
+```python
+from dotenv import load_dotenv
+from livekit.agents import AgentSession, AutoSubscribe, WorkerOptions, cli, llm
+from livekit.plugins import openai, telnyx
+
+load_dotenv()
+
+
+async def entrypoint(ctx):
+    await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
+    
+    session = AgentSession(
+        stt=telnyx.deepgram.STT(model="nova-2", language="en"),
+        tts=telnyx.TTS(voice="Rime.ArcanaV3.astra"),
+        llm=openai.LLM.with_telnyx(model="meta-llama/Meta-Llama-3.1-70B-Instruct"),
+    )
+    
+    await session.start(
+        room=ctx.room,
+        agent=llm.ChatContext().append(
+            role="system",
+            text="You are a helpful voice assistant. Keep your responses concise and conversational.",
+        ),
+    )
+
+
+if __name__ == "__main__":
+    cli.run_app(WorkerOptions(entrypoint_fnc=entrypoint))
 ```
 
 ## Resources
 
 - [Telnyx STT docs](https://developers.telnyx.com/docs/voice/programmable-voice/stt-standalone)
 - [Telnyx TTS docs](https://developers.telnyx.com/docs/voice/programmable-voice/tts-standalone)
-- [Telnyx TTS voices](https://developers.telnyx.com/api/call-control/list-text-to-speech-voices)
-- [LiveKit Agents docs](https://docs.livekit.io/agents/)
+- [Telnyx TTS voices](https://developers.telnyx.com/docs/tts-stt/tts-available-voices/index)
