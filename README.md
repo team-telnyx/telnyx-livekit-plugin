@@ -1,4 +1,4 @@
-# <img src="https://developers.telnyx.com/favicon.ico" width="24" height="24" alt="Telnyx"> Telnyx plugin for LiveKit
+<h1><a href="https://portal.telnyx.com"><img src="assets/telnyx-mark.svg" width="40" height="42" alt="Telnyx" align="top"></a> Telnyx plugin for LiveKit</h1>
 
 Get ultra-low latency STT and TTS for your LiveKit Cloud agents. This plugin connects Telnyx's voice AI directly to your LiveKit agents with the fastest response times.
 
