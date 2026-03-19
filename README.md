@@ -18,6 +18,36 @@ In the [Telnyx Portal](https://portal.telnyx.com), search for "API keys" once lo
 
 ### Speech-to-Text (STT)
 
+#### Nova-3
+
+```python
+from livekit.plugins import telnyx
+
+stt = telnyx.deepgram.STT(
+    model="nova-3",
+    language="en",
+    interim_results=True,
+    # Always enabled on Telnyx — no need to set them
+    smart_format=True,
+    numerals=True,
+    # Keyword boosting (Nova-3)
+    keyterm=["YourBrand", "custom-term"],
+    # Deepgram defaults — changing them not supported on Telnyx, yet
+    punctuate=True,
+    no_delay=True,
+    endpointing=25,
+    filler_words=True,
+    profanity_filter=False,
+    vad_events=True,
+    diarize=False,
+    # Not yet supported on Telnyx:
+    # detect_language=False,
+    # tags=["my-app"],
+)
+```
+
+#### Nova-2
+
 ```python
 from livekit.plugins import telnyx
 
@@ -25,13 +55,51 @@ stt = telnyx.deepgram.STT(
     model="nova-2",
     language="en",
     interim_results=True,
-    # Behavior
+    # Always enabled on Telnyx — no need to set them
+    smart_format=True,
+    numerals=True,
+    # Keyword boosting (Nova-2 — weighted)
+    keywords=["YourBrand:2.0", "custom-term:1.5"],
+    # Deepgram defaults — changing them not supported on Telnyx, yet
+    punctuate=True,
     no_delay=True,
-    filler_words=False,
+    endpointing=25,
+    filler_words=True,
     profanity_filter=False,
-    endpointing=300,
+    vad_events=True,
     diarize=False,
-    vad_events=False,
+    # Not yet supported on Telnyx:
+    # detect_language=False,
+    # tags=["my-app"],
+)
+```
+
+#### Flux
+
+```python
+from livekit.plugins import telnyx
+
+stt = telnyx.deepgram.STT(
+    model="flux",
+    language="en",
+    interim_results=True,
+    # Keyword boosting (Flux)
+    keyterm=["YourBrand", "custom-term"],
+    # Flux end-of-turn detection
+    eot_threshold=0.5,
+    eot_timeout_ms=3000,
+    eager_eot_threshold=0.3,
+    # Deepgram defaults — changing them not supported on Telnyx, yet
+    punctuate=True,
+    no_delay=True,
+    endpointing=25,
+    filler_words=True,
+    profanity_filter=False,
+    vad_events=True,
+    diarize=False,
+    # Not yet supported on Telnyx:
+    # detect_language=False,
+    # tags=["my-app"],
 )
 ```
 
@@ -70,7 +138,7 @@ async def entrypoint(ctx):
     await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
     
     session = AgentSession(
-        stt=telnyx.deepgram.STT(model="nova-2", language="en"),
+        stt=telnyx.deepgram.STT(model="nova-3", language="en"),
         tts=telnyx.TTS(voice="Rime.ArcanaV3.astra"),
         llm=openai.LLM.with_telnyx(model="meta-llama/Meta-Llama-3.1-70B-Instruct"),
     )
