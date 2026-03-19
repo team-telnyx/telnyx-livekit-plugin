@@ -16,7 +16,6 @@ Usage:
 
 from __future__ import annotations
 
-import warnings
 from typing import Any, Literal
 
 import aiohttp
@@ -40,7 +39,7 @@ class STT(BaseTelnyxSTT):
     def __init__(
         self,
         *,
-        model: Literal["nova-3", "nova-2", "nova-3-flux"] = "nova-3",
+        model: Literal["nova-3", "nova-2", "flux"] = "nova-3",
         language: str = "en",
         interim_results: bool = True,
         api_key: str | None = None,
@@ -64,34 +63,6 @@ class STT(BaseTelnyxSTT):
         # Catch-all for any Deepgram param
         **extra_deepgram_params: Any,
     ) -> None:
-        if smart_format is not None:
-            warnings.warn(
-                "smart_format is always enabled on Telnyx STT. "
-                "This parameter has no effect.",
-                stacklevel=2,
-            )
-
-        if numerals is not None:
-            warnings.warn(
-                "numerals is always enabled on Telnyx STT. "
-                "This parameter has no effect.",
-                stacklevel=2,
-            )
-
-        if keyterm is not None:
-            warnings.warn(
-                "keyterm is not yet supported on Telnyx STT. "
-                "This parameter will be ignored.",
-                stacklevel=2,
-            )
-
-        if keywords is not None:
-            warnings.warn(
-                "keywords is not yet supported on Telnyx STT. "
-                "This parameter will be ignored.",
-                stacklevel=2,
-            )
-
         super().__init__(
             language=language,
             transcription_engine="deepgram",

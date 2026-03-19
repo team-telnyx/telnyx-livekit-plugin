@@ -91,6 +91,11 @@ class STT(stt.STT):
         - smart_format, numerals: Nova only (not Flux streaming)
         - keyterm: Nova-3 and Flux
         - keywords: Nova-2 only (use keyterm for Nova-3/Flux)
+
+    Flux end-of-turn parameters (model="flux" only):
+        - eot_threshold: float (0.5–0.9) — confidence threshold for end-of-turn
+        - eot_timeout_ms: int (500–10000) — silence timeout before EOT fires
+        - eager_eot_threshold: float (0.3–0.9, must be ≤ eot_threshold) — early EOT signal
     """
 
     def __init__(
@@ -118,6 +123,10 @@ class STT(stt.STT):
         # Recognition boosting
         keyterm: str | list[str] | None = None,
         keywords: str | list[str] | None = None,
+        # --- Flux parameters (Deepgram /v2/listen) ---
+        eot_threshold: float | None = None,
+        eot_timeout_ms: int | None = None,
+        eager_eot_threshold: float | None = None,
         # --- Catch-all for any Deepgram param not listed above ---
         **extra_deepgram_params: Any,
     ) -> None:
@@ -142,6 +151,10 @@ class STT(stt.STT):
             "endpointing": endpointing,
             "diarize": diarize,
             "vad_events": vad_events,
+            # Flux-specific (Deepgram /v2/listen end-of-turn detection)
+            "eot_threshold": eot_threshold,
+            "eot_timeout_ms": eot_timeout_ms,
+            "eager_eot_threshold": eager_eot_threshold,
         }
 
         for k, v in scalar_opts.items():
