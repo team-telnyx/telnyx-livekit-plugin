@@ -65,7 +65,7 @@ class STT(BaseTelnyxSTT):
     ) -> None:
         super().__init__(
             language=language,
-            transcription_engine="deepgram",
+            transcription_engine="Deepgram",
             interim_results=interim_results,
             api_key=api_key,
             base_url=base_url,
