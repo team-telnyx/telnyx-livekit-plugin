@@ -59,6 +59,10 @@ class TTS(tts.TTS):
         )
         self._session_manager = SessionManager(http_session)
         self._streams = weakref.WeakSet[SynthesizeStream]()
+        # Persistent WebSocket for connection reuse
+        self._ws: aiohttp.ClientWebSocketResponse | None = None
+        self._ws_lock = asyncio.Lock()
+        self._ws_ready = asyncio.Event()
 
     @property
     def model(self) -> str:
@@ -67,6 +71,35 @@ class TTS(tts.TTS):
     @property
     def provider(self) -> str:
         return "telnyx"
+
+    async def _ensure_connected(self) -> aiohttp.ClientWebSocketResponse:
+        """Ensure persistent WebSocket is connected. Creates if needed, reuses if exists."""
+        async with self._ws_lock:
+            # Check if existing connection is still valid
+            if self._ws is not None and not self._ws.closed:
+                return self._ws
+
+            # Connection is closed or doesn't exist - create new one
+            url = f"{self._opts.base_url}?voice={self._opts.voice}"
+            headers = {"Authorization": f"Bearer {self._opts.api_key}"}
+
+            logger.info("Telnyx TTS: Opening persistent WebSocket connection")
+            self._ws = await self._session_manager.ensure_session().ws_connect(
+                url, headers=headers
+            )
+
+            # Send init frame to initialize the session
+            await self._ws.send_str(json.dumps({"text": " "}))
+            self._ws_ready.set()
+            logger.info("Telnyx TTS: Persistent WebSocket connected and initialized")
+
+            return self._ws
+
+    async def _check_connection(self) -> aiohttp.ClientWebSocketResponse:
+        """Check if connection is still valid, reconnect if needed."""
+        if self._ws is None or self._ws.closed:
+            return await self._ensure_connected()
+        return self._ws
 
     def synthesize(
         self,
@@ -83,7 +116,18 @@ class TTS(tts.TTS):
         self._streams.add(stream)
         return stream
 
+    async def prewarm(self) -> None:
+        """Eagerly establish the WebSocket connection before first use."""
+        await self._ensure_connected()
+        logger.info("Telnyx TTS: WebSocket pre-warmed")
+
     async def aclose(self) -> None:
+        # Close persistent WebSocket
+        if self._ws is not None and not self._ws.closed:
+            await self._ws.close()
+            self._ws = None
+            self._ws_ready.clear()
+
         for stream in list(self._streams):
             await stream.aclose()
         self._streams.clear()
@@ -148,22 +192,21 @@ class SynthesizeStream(tts.SynthesizeStream):
         segment_id = utils.shortuuid()
         output_emitter.start_segment(segment_id=segment_id)
 
-        url = f"{self._tts._opts.base_url}?voice={self._tts._opts.voice}"
-        headers = {"Authorization": f"Bearer {self._tts._opts.api_key}"}
-
         decoder = utils.codecs.AudioStreamDecoder(
             sample_rate=self._tts._opts.sample_rate,
             num_channels=NUM_CHANNELS,
             format="audio/mp3",
         )
 
-        async def send_task(ws: aiohttp.ClientWebSocketResponse) -> None:
-            await ws.send_str(json.dumps({"text": " "}))
-            self._mark_started()
+        # Use persistent WebSocket connection (check + reconnect if needed)
+        ws = await self._tts._check_connection()
+        self._mark_started()
+
+        async def send_task() -> None:
             await ws.send_str(json.dumps({"text": text}))
             await ws.send_str(json.dumps({"text": ""}))
 
-        async def recv_task(ws: aiohttp.ClientWebSocketResponse) -> None:
+        async def recv_task() -> None:
             async for msg in ws:
                 if msg.type == aiohttp.WSMsgType.TEXT:
                     try:
@@ -192,21 +235,13 @@ class SynthesizeStream(tts.SynthesizeStream):
             async for frame in decoder:
                 output_emitter.push(frame.data.tobytes())
 
+        tasks = [
+            asyncio.create_task(send_task()),
+            asyncio.create_task(recv_task()),
+            asyncio.create_task(decode_task()),
+        ]
         try:
-            ws = await asyncio.wait_for(
-                self._tts._session_manager.ensure_session().ws_connect(url, headers=headers),
-                self._conn_options.timeout,
-            )
-            async with ws:
-                tasks = [
-                    asyncio.create_task(send_task(ws)),
-                    asyncio.create_task(recv_task(ws)),
-                    asyncio.create_task(decode_task()),
-                ]
-                try:
-                    await asyncio.gather(*tasks)
-                finally:
-                    await utils.aio.gracefully_cancel(*tasks)
+            await asyncio.gather(*tasks)
         except asyncio.TimeoutError:
             raise APITimeoutError() from None
         except aiohttp.ClientResponseError as e:
@@ -218,5 +253,6 @@ class SynthesizeStream(tts.SynthesizeStream):
         except Exception as e:
             raise APIConnectionError() from e
         finally:
+            await utils.aio.gracefully_cancel(*tasks)
             await decoder.aclose()
             output_emitter.end_segment()
