@@ -117,6 +117,11 @@ class SynthesizeStream(tts.SynthesizeStream):
                     if segment_text:
                         self._segments_ch.send_nowait(segment_text)
                         segment_text = ""
+            # Flush any remaining text that wasn't followed by a FlushSentinel.
+            # This happens when end_input() is called after the last text push
+            # without an intervening flush — e.g. the final sentence from an LLM stream.
+            if segment_text:
+                self._segments_ch.send_nowait(segment_text)
             self._segments_ch.close()
 
         async def _run_segments() -> None:
@@ -144,21 +149,37 @@ class SynthesizeStream(tts.SynthesizeStream):
         finally:
             await utils.aio.gracefully_cancel(*tasks)
 
+    def _is_pcm_provider(self) -> bool:
+        """Check if the voice uses a provider that should request PCM format.
+
+        MiniMax returns MP3 chunks whose frame boundaries don't align with
+        WebSocket message boundaries, causing PyAV decode errors and audio
+        truncation.  Requesting raw PCM avoids the MP3 decoder entirely.
+        """
+        voice = self._tts._opts.voice.lower()
+        return voice.startswith("minimax.")
+
     async def _run_ws(self, text: str, output_emitter: tts.AudioEmitter) -> None:
         segment_id = utils.shortuuid()
         output_emitter.start_segment(segment_id=segment_id)
 
+        use_pcm = self._is_pcm_provider()
         url = f"{self._tts._opts.base_url}?voice={self._tts._opts.voice}"
         headers = {"Authorization": f"Bearer {self._tts._opts.api_key}"}
 
-        decoder = utils.codecs.AudioStreamDecoder(
-            sample_rate=self._tts._opts.sample_rate,
-            num_channels=NUM_CHANNELS,
-            format="audio/mp3",
-        )
+        decoder = None
+        if not use_pcm:
+            decoder = utils.codecs.AudioStreamDecoder(
+                sample_rate=self._tts._opts.sample_rate,
+                num_channels=NUM_CHANNELS,
+                format="audio/mp3",
+            )
 
         async def send_task(ws: aiohttp.ClientWebSocketResponse) -> None:
-            await ws.send_str(json.dumps({"text": " "}))
+            handshake: dict = {"text": " "}
+            if use_pcm:
+                handshake["voice_settings"] = {"response_format": "pcm"}
+            await ws.send_str(json.dumps(handshake))
             self._mark_started()
             await ws.send_str(json.dumps({"text": text}))
             await ws.send_str(json.dumps({"text": ""}))
@@ -172,7 +193,10 @@ class SynthesizeStream(tts.SynthesizeStream):
                         if audio_data:
                             audio_bytes = base64.b64decode(audio_data)
                             if audio_bytes:
-                                decoder.push(audio_bytes)
+                                if use_pcm:
+                                    output_emitter.push(audio_bytes)
+                                else:
+                                    decoder.push(audio_bytes)
                     except json.JSONDecodeError:
                         logger.warning("Telnyx TTS: Received invalid JSON")
 
@@ -186,9 +210,12 @@ class SynthesizeStream(tts.SynthesizeStream):
                     logger.error("Telnyx TTS WebSocket error: %s", ws.exception())
                     break
 
-            decoder.end_input()
+            if decoder:
+                decoder.end_input()
 
         async def decode_task() -> None:
+            if not decoder:
+                return
             async for frame in decoder:
                 output_emitter.push(frame.data.tobytes())
 
@@ -218,5 +245,6 @@ class SynthesizeStream(tts.SynthesizeStream):
         except Exception as e:
             raise APIConnectionError() from e
         finally:
-            await decoder.aclose()
+            if decoder:
+                await decoder.aclose()
             output_emitter.end_segment()

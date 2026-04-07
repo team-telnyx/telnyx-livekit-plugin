@@ -37,6 +37,7 @@ ENV/
 *~
 
 # Test outputs
+tests/output/
 tests/output.wav
 tests/assets/sample.wav
 
