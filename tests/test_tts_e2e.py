@@ -202,6 +202,13 @@ async def main():
         print("❌ TELNYX_API_KEY not set")
         return
 
+    # Clean up output directory before running
+    if OUTPUT_DIR.exists():
+        for f in OUTPUT_DIR.iterdir():
+            if f.is_file() and f.suffix in (".wav", ".mp3", ".raw"):
+                f.unlink()
+    OUTPUT_DIR.mkdir(exist_ok=True)
+
     all_passed = True
 
     # ── 1. Basic TTS synthesis at different sample rates ──
