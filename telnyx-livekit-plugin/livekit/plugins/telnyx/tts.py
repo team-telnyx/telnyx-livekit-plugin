@@ -13,6 +13,7 @@ from dataclasses import dataclass
 
 import aiohttp
 
+from livekit import rtc
 from livekit.agents import (
     APIConnectionError,
     APIConnectOptions,
@@ -25,6 +26,9 @@ from livekit.agents.types import DEFAULT_API_CONNECT_OPTIONS
 
 from .common import NUM_CHANNELS, SAMPLE_RATE, TTS_ENDPOINT, SessionManager, get_api_key
 from .log import logger
+
+# LiveKit voice pipeline default output sample rate.
+_PIPELINE_SAMPLE_RATE = 24000
 
 
 @dataclass
@@ -100,9 +104,16 @@ class SynthesizeStream(tts.SynthesizeStream):
     async def _run(self, output_emitter: tts.AudioEmitter) -> None:
         self._segments_ch = utils.aio.Chan[str]()
         request_id = utils.shortuuid()
+        # When using PCM with resampling, tell the emitter the output
+        # rate so frame metadata matches what we actually push.
+        emitter_rate = (
+            _PIPELINE_SAMPLE_RATE
+            if self._is_pcm_provider() and self._tts._opts.sample_rate != _PIPELINE_SAMPLE_RATE
+            else self._tts._opts.sample_rate
+        )
         output_emitter.initialize(
             request_id=request_id,
-            sample_rate=self._tts._opts.sample_rate,
+            sample_rate=emitter_rate,
             num_channels=NUM_CHANNELS,
             mime_type="audio/pcm",
             stream=True,
@@ -184,6 +195,22 @@ class SynthesizeStream(tts.SynthesizeStream):
             await ws.send_str(json.dumps({"text": text}))
             await ws.send_str(json.dumps({"text": ""}))
 
+        # When using raw PCM, resample from the provider's native rate
+        # (e.g. 16 kHz) up to the LiveKit voice-pipeline output rate
+        # (24 kHz).  Without this the 16 kHz frames are played back at
+        # 24 kHz speed, producing a chipmunk effect.
+        resampler: rtc.AudioResampler | None = None
+        pcm_byte_stream: utils.audio.AudioByteStream | None = None
+        if use_pcm and self._tts._opts.sample_rate != _PIPELINE_SAMPLE_RATE:
+            resampler = rtc.AudioResampler(
+                input_rate=self._tts._opts.sample_rate,
+                output_rate=_PIPELINE_SAMPLE_RATE,
+            )
+            pcm_byte_stream = utils.audio.AudioByteStream(
+                sample_rate=self._tts._opts.sample_rate,
+                num_channels=NUM_CHANNELS,
+            )
+
         async def recv_task(ws: aiohttp.ClientWebSocketResponse) -> None:
             async for msg in ws:
                 if msg.type == aiohttp.WSMsgType.TEXT:
@@ -194,7 +221,12 @@ class SynthesizeStream(tts.SynthesizeStream):
                             audio_bytes = base64.b64decode(audio_data)
                             if audio_bytes:
                                 if use_pcm:
-                                    output_emitter.push(audio_bytes)
+                                    if resampler and pcm_byte_stream:
+                                        for frame in pcm_byte_stream.push(audio_bytes):
+                                            for resampled in resampler.push(frame):
+                                                output_emitter.push(resampled.data.tobytes())
+                                    else:
+                                        output_emitter.push(audio_bytes)
                                 else:
                                     decoder.push(audio_bytes)
                     except json.JSONDecodeError:
@@ -209,6 +241,14 @@ class SynthesizeStream(tts.SynthesizeStream):
                 elif msg.type == aiohttp.WSMsgType.ERROR:
                     logger.error("Telnyx TTS WebSocket error: %s", ws.exception())
                     break
+
+            # Flush any remaining PCM through the resampler
+            if resampler and pcm_byte_stream:
+                for frame in pcm_byte_stream.flush():
+                    for resampled in resampler.push(frame):
+                        output_emitter.push(resampled.data.tobytes())
+                for resampled in resampler.flush():
+                    output_emitter.push(resampled.data.tobytes())
 
             if decoder:
                 decoder.end_input()
