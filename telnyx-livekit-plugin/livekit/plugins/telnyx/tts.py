@@ -30,6 +30,11 @@ from .log import logger
 # LiveKit voice pipeline default output sample rate.
 _PIPELINE_SAMPLE_RATE = 24000
 
+# MiniMax supported PCM sample rates. 24kHz is NOT supported natively —
+# MiniMax maps 24000 → 22050.  Requesting 32kHz (the PCM default) and
+# downsampling to 24kHz gives better quality than upsampling from 16kHz.
+_MINIMAX_PCM_SAMPLE_RATE = 32000
+
 
 @dataclass
 class _TTSOptions:
@@ -108,7 +113,7 @@ class SynthesizeStream(tts.SynthesizeStream):
         # rate so frame metadata matches what we actually push.
         emitter_rate = (
             _PIPELINE_SAMPLE_RATE
-            if self._is_pcm_provider() and self._tts._opts.sample_rate != _PIPELINE_SAMPLE_RATE
+            if self._is_pcm_provider()
             else self._tts._opts.sample_rate
         )
         output_emitter.initialize(
@@ -176,11 +181,15 @@ class SynthesizeStream(tts.SynthesizeStream):
         For PCM providers (MiniMax), include audio_format and sample_rate
         so the gateway can forward them to the upstream TTS service.
         Non-PCM providers (Telnyx voices returning MP3) don't need these.
+
+        MiniMax does not natively support 24kHz PCM (maps to 22050 instead).
+        Requesting 32kHz and downsampling gives higher quality than
+        upsampling from 16kHz.
         """
         base = f"{self._tts._opts.base_url}?voice={self._tts._opts.voice}"
 
         if self._is_pcm_provider():
-            return f"{base}&audio_format=linear16&sample_rate={self._tts._opts.sample_rate}"
+            return f"{base}&audio_format=linear16&sample_rate={_MINIMAX_PCM_SAMPLE_RATE}"
 
         return base
 
@@ -209,19 +218,20 @@ class SynthesizeStream(tts.SynthesizeStream):
             await ws.send_str(json.dumps({"text": text}))
             await ws.send_str(json.dumps({"text": ""}))
 
-        # When using raw PCM, resample from the provider's native rate
-        # (e.g. 16 kHz) up to the LiveKit voice-pipeline output rate
-        # (24 kHz).  Without this the 16 kHz frames are played back at
-        # 24 kHz speed, producing a chipmunk effect.
+        # When using raw PCM from MiniMax, resample from the provider's
+        # native rate (32 kHz) down to the LiveKit pipeline rate (24 kHz).
+        # MiniMax doesn't support 24kHz natively (maps to 22050), so we
+        # request 32kHz and downsample for better quality than upsampling
+        # from 16kHz.
         resampler: rtc.AudioResampler | None = None
         pcm_byte_stream: utils.audio.AudioByteStream | None = None
-        if use_pcm and self._tts._opts.sample_rate != _PIPELINE_SAMPLE_RATE:
+        if use_pcm:
             resampler = rtc.AudioResampler(
-                input_rate=self._tts._opts.sample_rate,
+                input_rate=_MINIMAX_PCM_SAMPLE_RATE,
                 output_rate=_PIPELINE_SAMPLE_RATE,
             )
             pcm_byte_stream = utils.audio.AudioByteStream(
-                sample_rate=self._tts._opts.sample_rate,
+                sample_rate=_MINIMAX_PCM_SAMPLE_RATE,
                 num_channels=NUM_CHANNELS,
             )
 

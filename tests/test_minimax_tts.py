@@ -4,8 +4,8 @@ MiniMax TTS pipeline E2E tests.
 
 Covers the MiniMax speech bug fix:
   1. Default 16kHz → resampled to 24kHz by plugin
-  2. 24kHz native → no resample needed (was chipmunk bug before WS URL fix)
-  3. _is_pcm_provider() check for MiniMax vs Telnyx voices
+  2. 32kHz native → downsampled to 24kHz pipeline rate
+  3. _is_pcm_provider() — MiniMax vs Telnyx voices
   4. Short text → resampler flush works
 
 Usage:
@@ -31,6 +31,7 @@ BASE_URL = os.environ.get("TELNYX_API_BASE_URL", "wss://apidev.telnyx.com/v2")
 MINIMAX_VOICE = "Minimax.speech-02-turbo.Calm_Woman"
 MINIMAX_TEXT = "The quick brown fox jumps over the lazy dog."
 PIPELINE_SAMPLE_RATE = 24000
+MINIMAX_PCM_RATE = 32000  # MiniMax doesn't support 24kHz PCM; 32kHz + downsample
 OUTPUT_DIR = Path(__file__).parent / "output"
 
 
@@ -106,20 +107,20 @@ async def test_pcm_default_resampled() -> dict:
     }
 
 
-async def test_pcm_24k_native() -> dict:
-    """Test 2: PCM 24kHz → native output, no resampler.
+async def test_pcm_32k_native() -> dict:
+    """Test 2: PCM 32kHz → downsampled to 24kHz pipeline rate.
 
-    With the WS URL fix, the plugin sends sample_rate=24000 to the gateway,
-    which forwards it to MiniMax. MiniMax returns native 24kHz PCM.
-    No resampler is needed — audio comes through at the pipeline rate.
-    Before the fix, MiniMax returned 16kHz (default) causing chipmunk audio.
+    MiniMax doesn't support 24kHz natively (maps to 22050). The plugin
+    requests 32kHz PCM from MiniMax (the PCM default) and downsamples
+    to 24kHz for the pipeline. This gives higher quality than upsampling
+    from 16kHz.
     """
     frame_rate, chunks, raw = await _run_stream(sample_rate=24000)
     duration = len(raw) / (frame_rate * 2) if frame_rate else 0
-    wav = str(_save_wav(raw, frame_rate, "minimax_pcm_24k.wav")) if raw else None
+    wav = str(_save_wav(raw, frame_rate, "minimax_pcm_32k.wav")) if raw else None
 
     return {
-        "name": "PCM 24kHz (native, no resample)",
+        "name": "PCM 32kHz → downsampled to 24kHz",
         "frame_sample_rate": frame_rate,
         "audio_bytes": len(raw),
         "chunks": chunks,
@@ -187,6 +188,8 @@ async def main():
     print("🧪 MiniMax TTS Pipeline Tests")
     print(f"   Base URL: {BASE_URL}")
     print(f"   Voice: {MINIMAX_VOICE}")
+    print(f"   Pipeline rate: {PIPELINE_SAMPLE_RATE} Hz")
+    print(f"   MiniMax PCM rate: {MINIMAX_PCM_RATE} Hz (native, not 24kHz)")
     print("=" * 60)
 
     # Clean output dir
@@ -214,18 +217,17 @@ async def main():
         print(f"   ❌ Error: {e}")
         all_passed = False
 
-    # Test 2: PCM 24kHz (native, no resample)
-    print("\n2. PCM 24kHz (native, no resample)")
+    # Test 2: PCM 32kHz (native, downsampled to 24kHz)
+    print("\n2. PCM 32kHz → downsampled to 24kHz")
     try:
-        r = await test_pcm_24k_native()
+        r = await test_pcm_32k_native()
         print(f"   Frame rate: {r['frame_sample_rate']} Hz | Bytes: {r['audio_bytes']} | Duration: {r['duration_s']}s")
         if r["wav"]:
             print(f"   WAV: {r['wav']}")
         if r["at_pipeline_rate"] and r["has_audio"]:
-            print(f"   ✅ Native 24kHz from MiniMax (WS URL fix working)")
+            print(f"   ✅ 32kHz PCM from MiniMax downsampled to pipeline rate ({PIPELINE_SAMPLE_RATE} Hz)")
         else:
             print(f"   ❌ Expected {PIPELINE_SAMPLE_RATE} Hz with audio, got {r['frame_sample_rate']} Hz / {r['audio_bytes']} bytes")
-            print(f"   ⚠️  If frame_rate=0 or no audio: plugin WS URL may not be sending sample_rate to gateway")
             all_passed = False
     except Exception as e:
         print(f"   ❌ Error: {e}")
