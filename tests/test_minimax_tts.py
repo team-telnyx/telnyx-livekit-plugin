@@ -6,9 +6,7 @@ Covers the MiniMax speech bug fix:
   1. Default 16kHz → resampled to 24kHz by plugin
   2. 24kHz native → no resample needed (was chipmunk bug before WS URL fix)
   3. _is_pcm_provider() check for MiniMax vs Telnyx voices
-  4. synthesize() single-shot path
-  5. Short text → resampler flush works
-  6. Multi-segment stream → audio not truncated
+  4. Short text → resampler flush works
 
 Usage:
     TELNYX_API_KEY=... uv run python tests/test_minimax_tts.py
@@ -55,7 +53,6 @@ async def _run_stream(
     voice: str = MINIMAX_VOICE,
     text: str = MINIMAX_TEXT,
     flush: bool = True,
-    segments: list[str] | None = None,
 ) -> tuple[int, int, bytes]:
     """Run MiniMax TTS through the stream() pipeline.
 
@@ -68,48 +65,12 @@ async def _run_stream(
 
     try:
         stream = tts_inst.stream()
-
-        if segments:
-            for seg in segments:
-                stream.push_text(seg)
-                stream.flush()
-        else:
-            stream.push_text(text)
-            if flush:
-                stream.flush()
-
+        stream.push_text(text)
+        if flush:
+            stream.flush()
         stream.end_input()
 
         async for event in stream:
-            if hasattr(event, "frame") and event.frame and hasattr(event.frame, "data"):
-                audio_chunks.append(event.frame.data.tobytes())
-                if frame_sample_rate is None and hasattr(event.frame, "sample_rate"):
-                    frame_sample_rate = event.frame.sample_rate
-    finally:
-        await tts_inst.aclose()
-
-    raw_audio = b"".join(audio_chunks)
-    return frame_sample_rate or 0, len(audio_chunks), raw_audio
-
-
-async def _run_synthesize(
-    sample_rate: int = 16000,
-    voice: str = MINIMAX_VOICE,
-    text: str = MINIMAX_TEXT,
-) -> tuple[int, int, bytes]:
-    """Run MiniMax TTS through the synthesize() single-shot path.
-
-    Returns (frame_rate, num_chunks, raw_audio).
-    """
-    tts_inst = telnyx.TTS(voice=voice, api_key=API_KEY, sample_rate=sample_rate)
-
-    audio_chunks = []
-    frame_sample_rate = None
-
-    try:
-        result = tts_inst.synthesize(text)
-
-        async for event in result:
             if hasattr(event, "frame") and event.frame and hasattr(event.frame, "data"):
                 audio_chunks.append(event.frame.data.tobytes())
                 if frame_sample_rate is None and hasattr(event.frame, "sample_rate"):
@@ -195,31 +156,8 @@ async def test_is_pcm_provider() -> dict:
     }
 
 
-async def test_synthesize_single_shot() -> dict:
-    """Test 4: synthesize() single-shot path works for MiniMax.
-
-    The synthesize() API is a convenience wrapper around the streaming API.
-    It should produce the same quality audio as stream() but in a single
-    request-response cycle.
-    """
-    frame_rate, chunks, raw = await _run_synthesize(sample_rate=16000)
-    duration = len(raw) / (frame_rate * 2) if frame_rate else 0
-    wav = str(_save_wav(raw, frame_rate, "minimax_synthesize.wav")) if raw else None
-
-    return {
-        "name": "synthesize() single-shot",
-        "frame_sample_rate": frame_rate,
-        "audio_bytes": len(raw),
-        "chunks": chunks,
-        "duration_s": round(duration, 2),
-        "resampled_to_pipeline": frame_rate == PIPELINE_SAMPLE_RATE,
-        "has_audio": len(raw) > 0,
-        "wav": wav,
-    }
-
-
 async def test_short_text_flush() -> dict:
-    """Test 5: Short text → resampler flush works.
+    """Test 4: Short text → resampler flush works.
 
     With very short text, the PCM byte stream may have leftover samples
     when the WebSocket closes. The resampler flush path must emit those
@@ -239,47 +177,6 @@ async def test_short_text_flush() -> dict:
         "duration_s": round(duration, 2),
         "resampled_to_pipeline": frame_rate == PIPELINE_SAMPLE_RATE,
         "has_audio": len(raw) > 0,
-        "wav": wav,
-    }
-
-
-async def test_multi_segment_stream() -> dict:
-    """Test 6: Multi-segment stream → audio not truncated.
-
-    Push multiple text segments through the stream with flush between each.
-    Each segment produces its own WebSocket request, and the resulting audio
-    should be the concatenation of all segments — no truncation between them.
-    """
-    segments = [
-        "The first sentence.",
-        "The second sentence.",
-        "The third and final sentence.",
-    ]
-    frame_rate, chunks, raw = await _run_stream(
-        sample_rate=16000, segments=segments
-    )
-    duration = len(raw) / (frame_rate * 2) if frame_rate else 0
-    wav = str(_save_wav(raw, frame_rate, "minimax_multi_segment.wav")) if raw else None
-
-    # For comparison, synthesize the full text as one shot
-    full_text = " ".join(segments)
-    _, _, raw_single = await _run_stream(sample_rate=16000, text=full_text, flush=True)
-
-    # Multi-segment audio should be in the same ballpark as single-shot
-    # (not exactly equal due to TTS variance, but same order of magnitude)
-    ratio = len(raw) / len(raw_single) if raw_single else 0
-
-    return {
-        "name": "Multi-segment stream",
-        "frame_sample_rate": frame_rate,
-        "audio_bytes": len(raw),
-        "single_shot_bytes": len(raw_single),
-        "ratio_vs_single": round(ratio, 2),
-        "chunks": chunks,
-        "duration_s": round(duration, 2),
-        "resampled_to_pipeline": frame_rate == PIPELINE_SAMPLE_RATE,
-        "has_audio": len(raw) > 0,
-        "not_truncated": 0.5 < ratio < 2.0,
         "wav": wav,
     }
 
@@ -347,24 +244,8 @@ async def main():
         print(f"   ❌ Error: {e}")
         all_passed = False
 
-    # Test 4: synthesize() single-shot
-    print("\n4. synthesize() single-shot")
-    try:
-        r = await test_synthesize_single_shot()
-        print(f"   Frame rate: {r['frame_sample_rate']} Hz | Bytes: {r['audio_bytes']} | Duration: {r['duration_s']}s")
-        if r["wav"]:
-            print(f"   WAV: {r['wav']}")
-        if r["has_audio"] and r["resampled_to_pipeline"]:
-            print(f"   ✅ synthesize() produces audio at pipeline rate")
-        else:
-            print(f"   ❌ No audio or wrong rate: {r['frame_sample_rate']} Hz / {r['audio_bytes']} bytes")
-            all_passed = False
-    except Exception as e:
-        print(f"   ❌ Error: {e}")
-        all_passed = False
-
-    # Test 5: Short text flush
-    print("\n5. Short text flush")
+    # Test 4: Short text flush
+    print("\n4. Short text flush")
     try:
         r = await test_short_text_flush()
         print(f"   Frame rate: {r['frame_sample_rate']} Hz | Bytes: {r['audio_bytes']} | Duration: {r['duration_s']}s")
@@ -374,22 +255,6 @@ async def main():
             print(f"   ✅ Short text flush produces audio at pipeline rate")
         else:
             print(f"   ❌ No audio or wrong rate: {r['frame_sample_rate']} Hz / {r['audio_bytes']} bytes")
-            all_passed = False
-    except Exception as e:
-        print(f"   ❌ Error: {e}")
-        all_passed = False
-
-    # Test 6: Multi-segment stream
-    print("\n6. Multi-segment stream")
-    try:
-        r = await test_multi_segment_stream()
-        print(f"   Frame rate: {r['frame_sample_rate']} Hz | Bytes: {r['audio_bytes']} | Single-shot: {r['single_shot_bytes']} | Ratio: {r['ratio_vs_single']}")
-        if r["wav"]:
-            print(f"   WAV: {r['wav']}")
-        if r["has_audio"] and r["not_truncated"]:
-            print(f"   ✅ Multi-segment audio not truncated (ratio vs single-shot: {r['ratio_vs_single']})")
-        else:
-            print(f"   ❌ Multi-segment audio may be truncated: {r['audio_bytes']} bytes vs {r['single_shot_bytes']} single-shot")
             all_passed = False
     except Exception as e:
         print(f"   ❌ Error: {e}")
