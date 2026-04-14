@@ -170,12 +170,26 @@ class SynthesizeStream(tts.SynthesizeStream):
         voice = self._tts._opts.voice.lower()
         return voice.startswith("minimax.")
 
+    def _build_ws_url(self) -> str:
+        """Build the WebSocket URL with appropriate query params.
+
+        For PCM providers (MiniMax), include audio_format and sample_rate
+        so the gateway can forward them to the upstream TTS service.
+        Non-PCM providers (Telnyx voices returning MP3) don't need these.
+        """
+        base = f"{self._tts._opts.base_url}?voice={self._tts._opts.voice}"
+
+        if self._is_pcm_provider():
+            return f"{base}&audio_format=linear16&sample_rate={self._tts._opts.sample_rate}"
+
+        return base
+
     async def _run_ws(self, text: str, output_emitter: tts.AudioEmitter) -> None:
         segment_id = utils.shortuuid()
         output_emitter.start_segment(segment_id=segment_id)
 
         use_pcm = self._is_pcm_provider()
-        url = f"{self._tts._opts.base_url}?voice={self._tts._opts.voice}"
+        url = self._build_ws_url()
         headers = {"Authorization": f"Bearer {self._tts._opts.api_key}"}
 
         decoder = None
@@ -196,9 +210,9 @@ class SynthesizeStream(tts.SynthesizeStream):
             await ws.send_str(json.dumps({"text": ""}))
 
         # When using raw PCM, resample from the provider's native rate
-        # (e.g. 16 kHz) up to the LiveKit voice-pipeline output rate
-        # (24 kHz).  Without this the 16 kHz frames are played back at
-        # 24 kHz speed, producing a chipmunk effect.
+        # up to the LiveKit voice-pipeline output rate (24 kHz) if needed.
+        # Without this the frames are played back at the wrong speed,
+        # producing a chipmunk effect.
         resampler: rtc.AudioResampler | None = None
         pcm_byte_stream: utils.audio.AudioByteStream | None = None
         if use_pcm and self._tts._opts.sample_rate != _PIPELINE_SAMPLE_RATE:
