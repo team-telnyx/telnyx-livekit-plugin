@@ -406,6 +406,7 @@ class SpeechStream(stt.RecognizeStream):
             "transcription_engine": opts.transcription_engine,
             "language": self._language,
             "input_format": "wav",
+            "sample_rate": opts.sample_rate,
         }
 
         # Merge Deepgram params
