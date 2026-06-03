@@ -92,10 +92,13 @@ class STT(stt.STT):
         - keyterm: Nova-3 and Flux
         - keywords: Nova-2 only (use keyterm for Nova-3/Flux)
 
-    Flux end-of-turn parameters (model="flux" only):
+    Flux end-of-turn parameters (model="flux" or "flux-multi" only):
         - eot_threshold: float (0.5–0.9) — confidence threshold for end-of-turn
         - eot_timeout_ms: int (500–10000) — silence timeout before EOT fires
         - eager_eot_threshold: float (0.3–0.9, must be ≤ eot_threshold) — early EOT signal
+
+    Flux Multilingual parameters (model="flux-multi" or "deepgram/flux-multi" only):
+        - language_hint: str | list[str] — optional language detection hints
     """
 
     def __init__(
@@ -127,6 +130,7 @@ class STT(stt.STT):
         eot_threshold: float | None = None,
         eot_timeout_ms: int | None = None,
         eager_eot_threshold: float | None = None,
+        language_hint: str | list[str] | None = None,
         # --- Catch-all for any Deepgram param not listed above ---
         **extra_deepgram_params: Any,
     ) -> None:
@@ -166,6 +170,10 @@ class STT(stt.STT):
             deepgram_params["keyterm"] = [keyterm] if isinstance(keyterm, str) else keyterm
         if keywords is not None:
             deepgram_params["keywords"] = [keywords] if isinstance(keywords, str) else keywords
+        if language_hint is not None:
+            deepgram_params["language_hint"] = (
+                [language_hint] if isinstance(language_hint, str) else language_hint
+            )
 
         # Extra params the user passes via **kwargs
         for k, v in extra_deepgram_params.items():

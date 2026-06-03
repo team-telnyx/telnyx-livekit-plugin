@@ -103,6 +103,25 @@ stt = telnyx.deepgram.STT(
 )
 ```
 
+#### Flux Multilingual
+
+```python
+from livekit.plugins import telnyx
+
+stt = telnyx.deepgram.STT(
+    model="deepgram/flux-multi",  # or "flux-multi"
+    language="en",
+    interim_results=True,
+    # Optional language detection hints. Locale tags are normalized by Telnyx,
+    # e.g. "pt-BR" -> "pt".
+    language_hint=["en", "es"],
+    # Flux end-of-turn detection
+    eot_threshold=0.5,
+    eot_timeout_ms=3000,
+    eager_eot_threshold=0.3,
+)
+```
+
 ### Text-to-Speech (TTS)
 
 ```python

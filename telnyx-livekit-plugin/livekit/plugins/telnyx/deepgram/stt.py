@@ -39,7 +39,7 @@ class STT(BaseTelnyxSTT):
     def __init__(
         self,
         *,
-        model: Literal["nova-3", "nova-2", "flux"] = "nova-3",
+        model: Literal["nova-3", "nova-2", "flux", "flux-multi", "deepgram/flux-multi"] = "nova-3",
         language: str = "en",
         interim_results: bool = True,
         api_key: str | None = None,
@@ -60,6 +60,8 @@ class STT(BaseTelnyxSTT):
         endpointing: int | bool | None = None,
         diarize: bool | None = None,
         vad_events: bool | None = None,
+        # Flux Multilingual language detection hints
+        language_hint: str | list[str] | None = None,
         # Catch-all for any Deepgram param
         **extra_deepgram_params: Any,
     ) -> None:
@@ -83,5 +85,6 @@ class STT(BaseTelnyxSTT):
             endpointing=endpointing,
             diarize=diarize,
             vad_events=vad_events,
+            language_hint=language_hint,
             **extra_deepgram_params,
         )
