@@ -46,16 +46,30 @@ async def run_stt(stt_inst: telnyx.deepgram.STT, label: str,
         stream.end_input()
 
         finals = []
-        async def collect():
+        event_q: asyncio.Queue[stt_types.SpeechEvent | None] = asyncio.Queue()
+
+        async def collect_events():
             async for event in stream:
+                await event_q.put(event)
+            await event_q.put(None)
+
+        collect_task = asyncio.create_task(collect_events())
+        try:
+            while True:
+                wait_for = 2 if finals else timeout
+                try:
+                    event = await asyncio.wait_for(event_q.get(), timeout=wait_for)
+                except asyncio.TimeoutError:
+                    break
+
+                if event is None:
+                    break
+
                 if (event.type == stt_types.SpeechEventType.FINAL_TRANSCRIPT
                         and event.alternatives):
                     finals.append(event.alternatives[0].text)
-
-        try:
-            await asyncio.wait_for(collect(), timeout=timeout)
-        except asyncio.TimeoutError:
-            pass
+        finally:
+            collect_task.cancel()
 
         transcript = " ".join(finals) if finals else None
         status = "✅" if transcript else "❌"
@@ -187,6 +201,41 @@ def make_flux_eot_only(api_key: str) -> telnyx.deepgram.STT:
     )
 
 
+def make_flux_multi_full(api_key: str) -> telnyx.deepgram.STT:
+    """Flux Multilingual README example."""
+    return telnyx.deepgram.STT(
+        model="deepgram/flux-multi",
+        language="en",
+        interim_results=True,
+        api_key=api_key,
+        language_hint=["en", "es"],
+        eot_threshold=0.5,
+        eot_timeout_ms=3000,
+        eager_eot_threshold=0.3,
+    )
+
+
+def make_flux_multi_minimal(api_key: str) -> telnyx.deepgram.STT:
+    """Flux Multilingual with just required params."""
+    return telnyx.deepgram.STT(
+        model="deepgram/flux-multi",
+        language="en",
+        api_key=api_key,
+    )
+
+
+def make_flux_multi_eot_only(api_key: str) -> telnyx.deepgram.STT:
+    """Flux Multilingual with only EOT params."""
+    return telnyx.deepgram.STT(
+        model="deepgram/flux-multi",
+        language="en",
+        api_key=api_key,
+        eot_threshold=0.8,
+        eot_timeout_ms=2000,
+        eager_eot_threshold=0.5,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -210,6 +259,9 @@ async def main():
         ("Flux",   "full README example", make_flux_full),
         ("Flux",   "minimal", make_flux_minimal),
         ("Flux",   "EOT params only", make_flux_eot_only),
+        ("Flux Multi", "full README example", make_flux_multi_full),
+        ("Flux Multi", "minimal", make_flux_multi_minimal),
+        ("Flux Multi", "EOT params only", make_flux_multi_eot_only),
     ]
 
     results = {}
